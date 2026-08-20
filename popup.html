@@ -1,0 +1,24 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Redirect Manager</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="app">
+      <h1>Redirect Manager</h1>
+
+      <form id="add-form">
+        <input id="from-input" type="text" placeholder="From (old-site.com)" required />
+        <span class="arrow">&rarr;</span>
+        <input id="to-input" type="text" placeholder="To (new-site.com)" required />
+        <button type="submit">Add</button>
+      </form>
+
+      <ul id="rules-list"></ul>
+      <p id="empty-state" class="empty">No redirect rules yet.</p>
+    </div>
+    <script src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "manifest_version": 2,
+  "name": "Redirect Manager",
+  "version": "1.0.0",
+  "description": "Redirect one website to another. Rules can be individually toggled or paused for a set time from the toolbar popup.",
+  "permissions": [
+    "webRequest",
+    "webRequestBlocking",
+    "storage",
+    "alarms",
+    "<all_urls>"
+  ],
+  "background": {
+    "scripts": ["background.js"],
+    "persistent": true
+  },
+  "browser_action": {
+    "default_popup": "popup.html",
+    "default_title": "Redirect Manager"
+  },
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "redirect-manager@local.ext"
+    }
+  }
+}
