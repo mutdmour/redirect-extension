@@ -106,7 +106,10 @@
     return rules.some((rule) => hostMatches(hostname, rule.fromHost));
   }
 
-  const DEFAULT_RULES = [{ fromHost: "reddit.com", to: "https://app.mutasem.dev" }];
+  const DEFAULT_RULES = [
+    { fromHost: "reddit.com", to: "https://app.mutasem.dev" },
+    { fromHost: "www.reddit.com", to: "https://app.mutasem.dev" },
+  ];
 
   // Seed the default rules exactly once, ever — tracked separately from the
   // rules list itself so deleting a seeded rule later doesn't bring it back.
