@@ -21,6 +21,9 @@
   ];
   const EXTEND_MINUTES = 15;
   const RECHECK_INTERVAL_MS = 15000;
+  const JUST_REDIRECTED_KEY = "justRedirected";
+  const JUST_REDIRECTED_WINDOW_MS = 10000;
+  const TEMP_PANEL_DISPLAY_MS = 5000;
 
   // wBlock's engine (and others) may only expose the promise-based GM.*
   // variants rather than the classic sync GM_* ones, so wrap both behind a
@@ -236,8 +239,9 @@
     return "font-size:12px;padding:3px 8px;background:#333;color:#eee;border:1px solid #555;border-radius:4px;";
   }
 
-  function injectPanel() {
+  function injectPanel(options) {
     if (panelEl || !document.body) return;
+    const { autoOpen = false, temporary = false } = options || {};
 
     const tab = document.createElement("button");
     tab.textContent = "⇄";
@@ -272,25 +276,38 @@
     document.body.appendChild(panel);
     panelEl = panel;
 
-    tab.addEventListener("click", () => {
-      const opening = panel.style.display === "none";
-      panel.style.display = opening ? "flex" : "none";
-      if (opening) {
-        renderPanel();
-        if (!countdownTimer) countdownTimer = setInterval(tickCountdowns, 1000);
-      } else if (countdownTimer) {
-        clearInterval(countdownTimer);
-        countdownTimer = null;
-      }
-    });
+    function openPanel() {
+      panel.style.display = "flex";
+      renderPanel();
+      if (!countdownTimer) countdownTimer = setInterval(tickCountdowns, 1000);
+    }
 
-    panel.querySelector("#rm-close").addEventListener("click", () => {
+    function closePanel() {
       panel.style.display = "none";
       if (countdownTimer) {
         clearInterval(countdownTimer);
         countdownTimer = null;
       }
+    }
+
+    tab.addEventListener("click", () => {
+      if (panel.style.display === "none") openPanel();
+      else closePanel();
     });
+
+    panel.querySelector("#rm-close").addEventListener("click", closePanel);
+
+    if (autoOpen) {
+      openPanel();
+      setTimeout(() => {
+        closePanel();
+        if (temporary) {
+          tab.remove();
+          panel.remove();
+          panelEl = null;
+        }
+      }, TEMP_PANEL_DISPLAY_MS);
+    }
 
     panel.querySelector("#rm-form").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -318,12 +335,21 @@
 
     const redirectUrl = pickRedirect(rules, hostname);
     if (redirectUrl) {
+      await gmSet(JUST_REDIRECTED_KEY, { url: redirectUrl, at: Date.now() });
       location.replace(redirectUrl);
       return;
     }
 
-    if (hasAnyRuleForHost(rules, hostname)) {
-      const start = () => injectPanel();
+    const justRedirectedFlag = await gmGet(JUST_REDIRECTED_KEY, null);
+    const justArrived =
+      Boolean(justRedirectedFlag) &&
+      justRedirectedFlag.url === location.href &&
+      Date.now() - justRedirectedFlag.at < JUST_REDIRECTED_WINDOW_MS;
+    if (justArrived) await gmSet(JUST_REDIRECTED_KEY, null);
+
+    const ownsRuleHere = hasAnyRuleForHost(rules, hostname);
+    if (ownsRuleHere || justArrived) {
+      const start = () => injectPanel({ autoOpen: justArrived, temporary: justArrived && !ownsRuleHere });
       if (document.body) start();
       else document.addEventListener("DOMContentLoaded", start, { once: true });
     }

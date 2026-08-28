@@ -32,6 +32,14 @@ then start appearing on that host too. If you delete every rule, there's
 no page left where the tab shows up to add a new one (the default is only
 seeded once, ever — deleting it won't bring it back).
 
+Right after a redirect fires, the panel also opens automatically on the
+destination page for 5 seconds as a "yes, that just happened" confirmation
+— even if the destination host has no rule of its own, in which case the
+tab disappears again once the panel auto-closes. This works by writing a
+short-lived flag via the userscript engine's storage right before
+`location.replace()`, since a query-string signal would change the landing
+URL and `sessionStorage` doesn't cross origins.
+
 ## Known differences from the Firefox extension
 
 - **No toolbar popup** — replaced by the in-page floating panel described
