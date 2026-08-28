@@ -88,6 +88,16 @@ h1 {
   padding: 2px;
 }
 
+.extend-btn {
+  font-size: 11px;
+  padding: 2px 6px;
+  border: 1px solid #0060df;
+  background: none;
+  color: #0060df;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
 .delete-btn {
   margin-left: auto;
   border: none;

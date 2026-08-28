@@ -2,8 +2,10 @@ const STORAGE_KEY = "rules";
 const PAUSE_OPTIONS = [
   { label: "5 min", minutes: 5 },
   { label: "15 min", minutes: 15 },
-  { label: "1 hr", minutes: 60 },
 ];
+const EXTEND_MINUTES = 15;
+
+const countdownEls = new Map();
 
 const listEl = document.getElementById("rules-list");
 const emptyEl = document.getElementById("empty-state");
@@ -52,6 +54,7 @@ async function render() {
   const rules = await getRules();
   listEl.innerHTML = "";
   emptyEl.style.display = rules.length ? "none" : "block";
+  countdownEls.clear();
 
   for (const rule of rules) {
     const isPaused = Boolean(rule.disabledUntil && rule.disabledUntil > Date.now());
@@ -67,6 +70,7 @@ async function render() {
       countdown.className = "countdown";
       countdown.textContent = `Paused — resumes in ${formatRemaining(rule.disabledUntil - Date.now())}`;
       info.appendChild(countdown);
+      countdownEls.set(rule.id, { el: countdown, disabledUntil: rule.disabledUntil });
     }
 
     const controls = document.createElement("div");
@@ -85,26 +89,41 @@ async function render() {
     });
     controls.appendChild(toggle);
 
-    const pauseSelect = document.createElement("select");
-    const defaultOpt = document.createElement("option");
-    defaultOpt.textContent = "Pause for…";
-    defaultOpt.value = "";
-    pauseSelect.appendChild(defaultOpt);
-    for (const opt of PAUSE_OPTIONS) {
-      const o = document.createElement("option");
-      o.value = String(opt.minutes);
-      o.textContent = opt.label;
-      pauseSelect.appendChild(o);
-    }
-    pauseSelect.addEventListener("change", async () => {
-      const minutes = Number(pauseSelect.value);
-      if (!minutes) return;
-      await browser.alarms.create(`reenable-${rule.id}`, { delayInMinutes: minutes });
-      await updateRule(rule.id, (r) => {
-        r.disabledUntil = Date.now() + minutes * 60000;
+    if (isPaused) {
+      const extendBtn = document.createElement("button");
+      extendBtn.type = "button";
+      extendBtn.className = "extend-btn";
+      extendBtn.textContent = `Extend +${EXTEND_MINUTES}m`;
+      extendBtn.addEventListener("click", async () => {
+        const newUntil = rule.disabledUntil + EXTEND_MINUTES * 60000;
+        await browser.alarms.create(`reenable-${rule.id}`, { when: newUntil });
+        await updateRule(rule.id, (r) => {
+          r.disabledUntil = newUntil;
+        });
       });
-    });
-    controls.appendChild(pauseSelect);
+      controls.appendChild(extendBtn);
+    } else {
+      const pauseSelect = document.createElement("select");
+      const defaultOpt = document.createElement("option");
+      defaultOpt.textContent = "Pause for…";
+      defaultOpt.value = "";
+      pauseSelect.appendChild(defaultOpt);
+      for (const opt of PAUSE_OPTIONS) {
+        const o = document.createElement("option");
+        o.value = String(opt.minutes);
+        o.textContent = opt.label;
+        pauseSelect.appendChild(o);
+      }
+      pauseSelect.addEventListener("change", async () => {
+        const minutes = Number(pauseSelect.value);
+        if (!minutes) return;
+        await browser.alarms.create(`reenable-${rule.id}`, { delayInMinutes: minutes });
+        await updateRule(rule.id, (r) => {
+          r.disabledUntil = Date.now() + minutes * 60000;
+        });
+      });
+      controls.appendChild(pauseSelect);
+    }
 
     const deleteBtn = document.createElement("button");
     deleteBtn.type = "button";
@@ -149,5 +168,11 @@ browser.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes[STORAGE_KEY]) render();
 });
 
-setInterval(render, 1000);
+function tickCountdowns() {
+  for (const { el, disabledUntil } of countdownEls.values()) {
+    el.textContent = `Paused — resumes in ${formatRemaining(disabledUntil - Date.now())}`;
+  }
+}
+
+setInterval(tickCountdowns, 1000);
 render();

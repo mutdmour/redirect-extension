@@ -31,11 +31,10 @@ function hostMatches(hostname, fromHost) {
   return hostname === fromHost || hostname.endsWith(`.${fromHost}`);
 }
 
-function buildRedirectUrl(originalUrl, rule) {
+function buildRedirectUrl(rule) {
   const target = toAbsoluteUrl(rule.to);
   if (!target) return null;
-  const src = new URL(originalUrl);
-  return `${target.protocol}//${target.host}${src.pathname}${src.search}${src.hash}`;
+  return target.href;
 }
 
 browser.webRequest.onBeforeRequest.addListener(
@@ -53,7 +52,7 @@ browser.webRequest.onBeforeRequest.addListener(
       if (!isRuleActive(rule)) continue;
       if (!hostMatches(url.hostname, rule.fromHost)) continue;
 
-      const redirectUrl = buildRedirectUrl(details.url, rule);
+      const redirectUrl = buildRedirectUrl(rule);
       if (redirectUrl && redirectUrl !== details.url) {
         return { redirectUrl };
       }
@@ -71,19 +70,42 @@ browser.storage.onChanged.addListener((changes, area) => {
   }
 });
 
-// Fallback for when a pause's alarm fires while the rule's disabledUntil
-// timestamp is still in the future (e.g. clock drift) or the alarm was lost
-// across a browser restart: the onBeforeRequest check above already treats
-// disabledUntil <= now as active, so this just tidies the stored flag.
+// When a pause's alarm fires, clear the stored disabledUntil flag (the
+// onBeforeRequest check above already treats disabledUntil <= now as
+// active on its own, so this just tidies the flag / covers clock drift and
+// alarms restored across a browser restart). Also catch up any tab that's
+// already sitting on the now-redirected site, since a dormant tab won't
+// trigger a new main_frame request on its own.
 browser.alarms.onAlarm.addListener((alarm) => {
   if (!alarm.name.startsWith("reenable-")) return;
   const ruleId = alarm.name.slice("reenable-".length);
 
-  loadRules().then(() => {
+  loadRules().then(async () => {
     const rule = rulesCache.find((r) => r.id === ruleId);
-    if (rule && rule.disabledUntil) {
+    if (!rule) return;
+
+    if (rule.disabledUntil) {
       rule.disabledUntil = null;
-      saveRules();
+      await saveRules();
+    }
+    if (!isRuleActive(rule)) return;
+
+    const redirectUrl = buildRedirectUrl(rule);
+    if (!redirectUrl) return;
+
+    const tabs = await browser.tabs.query({ active: true });
+    for (const tab of tabs) {
+      if (!tab.url) continue;
+      let tabUrl;
+      try {
+        tabUrl = new URL(tab.url);
+      } catch (e) {
+        continue;
+      }
+      if (!hostMatches(tabUrl.hostname, rule.fromHost)) continue;
+      if (redirectUrl !== tab.url) {
+        browser.tabs.update(tab.id, { url: redirectUrl });
+      }
     }
   });
 });

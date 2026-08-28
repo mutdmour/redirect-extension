@@ -28,17 +28,21 @@ Rules are stored under `storage.local["rules"]` as an array of:
 - `fromHost` — bare hostname (no protocol/path), matched exactly or as a
   subdomain (`hostMatches` in `background.js`).
 - `to` — raw user input (may or may not include a protocol); normalized to
-  a URL at redirect time. The original request's path/query/hash is always
-  preserved on redirect.
+  a URL at redirect time. Redirects always land on `to` as given (its own
+  path, if any) — the original request's path/query/hash is dropped, not
+  appended.
 - `enabled` — manual on/off toggle.
 - `disabledUntil` — epoch ms; set when a rule is paused via the popup
   dropdown. A rule is active only if `enabled` is true AND (`disabledUntil`
   is null or in the past).
 
 Pauses are implemented with `browser.alarms` (`reenable-<ruleId>`) so they
-survive popup close; the alarm handler is a fallback that clears the stale
-`disabledUntil` flag — the `onBeforeRequest` check already treats an
-expired `disabledUntil` as active on its own.
+survive popup close. The alarm handler clears the stale `disabledUntil`
+flag (the `onBeforeRequest` check already treats an expired `disabledUntil`
+as active on its own) and also redirects any currently-active tab that's
+already sitting on the rule's `fromHost` — otherwise a dormant tab open
+before the pause ended wouldn't trigger a new `main_frame` request and
+would sit un-redirected until the user next navigated.
 
 ## Conventions / constraints to preserve
 
