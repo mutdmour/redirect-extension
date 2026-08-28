@@ -25,6 +25,23 @@
   const JUST_REDIRECTED_WINDOW_MS = 10000;
   const PAUSE_BUTTON_DISPLAY_MS = 60000;
   const POST_REDIRECT_PAUSE_MINUTES = 15;
+  const HIDE_TIMEOUT_MS = 2000;
+
+  // The redirect check is async (GM storage round-trip), so the original
+  // page can render for a moment before location.replace() fires. Hide it
+  // immediately and only reveal once we know no redirect is needed, so
+  // that gap reads as a brief blank screen instead of a content flash.
+  // Capped so a slow or broken check can never leave the page stuck blank.
+  function hidePage() {
+    if (document.documentElement) document.documentElement.style.visibility = "hidden";
+  }
+
+  function revealPage() {
+    if (document.documentElement) document.documentElement.style.visibility = "visible";
+  }
+
+  hidePage();
+  const revealFallbackTimer = setTimeout(revealPage, HIDE_TIMEOUT_MS);
 
   // wBlock's engine (and others) may only expose the promise-based GM.*
   // variants rather than the classic sync GM_* ones, so wrap both behind a
@@ -369,21 +386,32 @@
   }
 
   async function main() {
-    await ensureSeeded();
-
     const hostname = location.hostname;
-    const rules = await getRules();
+    let rules;
 
-    const match = pickRedirect(rules, hostname);
-    if (match) {
-      await gmSet(JUST_REDIRECTED_KEY, {
-        url: match.redirectUrl,
-        ruleId: match.rule.id,
-        at: Date.now(),
-      });
-      location.replace(match.redirectUrl);
-      return;
+    try {
+      await ensureSeeded();
+      rules = await getRules();
+
+      const match = pickRedirect(rules, hostname);
+      if (match) {
+        await gmSet(JUST_REDIRECTED_KEY, {
+          url: match.redirectUrl,
+          ruleId: match.rule.id,
+          at: Date.now(),
+        });
+        location.replace(match.redirectUrl);
+        return; // leave the page hidden — it's navigating away
+      }
+    } catch (e) {
+      clearTimeout(revealFallbackTimer);
+      revealPage();
+      throw e;
     }
+
+    // No redirect applies to this page — safe to show it now.
+    clearTimeout(revealFallbackTimer);
+    revealPage();
 
     const justRedirectedFlag = await gmGet(JUST_REDIRECTED_KEY, null);
     const justArrived =

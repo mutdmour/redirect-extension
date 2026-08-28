@@ -53,9 +53,12 @@ since a query-string signal would change the landing URL and
   totally idle in the background could take up to 15s to catch up once
   the pause expires, rather than being instant.
 - **Redirect happens via `location.replace()`, not a blocked network
-  request** — the target page's HTML starts loading before the script
-  redirects, so there can be a brief flash of the original page. This is
-  a fundamental Safari/WebKit limitation, not specific to this
-  implementation.
+  request** — the redirect check is async (a `GM.getValue` storage
+  round-trip), so instead of an inconsistent flash of the original page's
+  real content, the script hides the page (`visibility:hidden`)
+  immediately and only reveals it once the check comes back negative; if
+  it's positive, the page stays hidden and navigates away. A 2-second
+  fallback timer force-reveals the page if a check ever hangs, so a slow
+  or broken storage read can't leave the page permanently blank.
 - Same accepted gap as the Firefox extension: no loop guard for
   mutually-redirecting rules (A→B and B→A).
