@@ -23,7 +23,8 @@
   const RECHECK_INTERVAL_MS = 15000;
   const JUST_REDIRECTED_KEY = "justRedirected";
   const JUST_REDIRECTED_WINDOW_MS = 10000;
-  const TEMP_PANEL_DISPLAY_MS = 5000;
+  const PAUSE_BUTTON_DISPLAY_MS = 60000;
+  const POST_REDIRECT_PAUSE_MINUTES = 15;
 
   // wBlock's engine (and others) may only expose the promise-based GM.*
   // variants rather than the classic sync GM_* ones, so wrap both behind a
@@ -89,13 +90,14 @@
   }
 
   // Pure lookup so callers can reuse an already-fetched rules array instead
-  // of re-reading storage on every check.
+  // of re-reading storage on every check. Returns the rule alongside the
+  // URL so a caller can later act on that specific rule (e.g. pause it).
   function pickRedirect(rules, hostname) {
     for (const rule of rules) {
       if (!isRuleActive(rule)) continue;
       if (!hostMatches(hostname, rule.fromHost)) continue;
       const redirectUrl = buildRedirectUrl(rule);
-      if (redirectUrl && redirectUrl !== location.href) return redirectUrl;
+      if (redirectUrl && redirectUrl !== location.href) return { rule, redirectUrl };
     }
     return null;
   }
@@ -239,9 +241,8 @@
     return "font-size:12px;padding:3px 8px;background:#333;color:#eee;border:1px solid #555;border-radius:4px;";
   }
 
-  function injectPanel(options) {
+  function injectPanel() {
     if (panelEl || !document.body) return;
-    const { autoOpen = false, temporary = false } = options || {};
 
     const tab = document.createElement("button");
     tab.textContent = "⇄";
@@ -297,18 +298,6 @@
 
     panel.querySelector("#rm-close").addEventListener("click", closePanel);
 
-    if (autoOpen) {
-      openPanel();
-      setTimeout(() => {
-        closePanel();
-        if (temporary) {
-          tab.remove();
-          panel.remove();
-          panelEl = null;
-        }
-      }, TEMP_PANEL_DISPLAY_MS);
-    }
-
     panel.querySelector("#rm-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const fromInput = panel.querySelector("#rm-from");
@@ -327,16 +316,48 @@
     });
   }
 
+  // Shown briefly on the page a redirect just landed on, as a quick way to
+  // undo it without opening the full manager panel.
+  function injectPauseButton(ruleId) {
+    if (!document.body) return;
+
+    const btn = document.createElement("button");
+    btn.textContent = `Pause ${POST_REDIRECT_PAUSE_MINUTES}m`;
+    btn.style.cssText =
+      "position:fixed;bottom:16px;left:16px;z-index:2147483647;padding:8px 14px;" +
+      "border-radius:20px;background:#222;color:#fff;border:1px solid #555;font-size:13px;" +
+      "box-shadow:0 1px 4px rgba(0,0,0,0.4);";
+    document.body.appendChild(btn);
+
+    const dismissTimer = setTimeout(() => btn.remove(), PAUSE_BUTTON_DISPLAY_MS);
+
+    btn.addEventListener("click", async () => {
+      clearTimeout(dismissTimer);
+      const rules = await getRules();
+      const rule = rules.find((r) => r.id === ruleId);
+      if (rule) {
+        rule.disabledUntil = Date.now() + POST_REDIRECT_PAUSE_MINUTES * 60000;
+        await setRules(rules);
+      }
+      btn.textContent = "Paused ✓";
+      setTimeout(() => btn.remove(), 1200);
+    });
+  }
+
   async function main() {
     await ensureSeeded();
 
     const hostname = location.hostname;
     const rules = await getRules();
 
-    const redirectUrl = pickRedirect(rules, hostname);
-    if (redirectUrl) {
-      await gmSet(JUST_REDIRECTED_KEY, { url: redirectUrl, at: Date.now() });
-      location.replace(redirectUrl);
+    const match = pickRedirect(rules, hostname);
+    if (match) {
+      await gmSet(JUST_REDIRECTED_KEY, {
+        url: match.redirectUrl,
+        ruleId: match.rule.id,
+        at: Date.now(),
+      });
+      location.replace(match.redirectUrl);
       return;
     }
 
@@ -348,8 +369,11 @@
     if (justArrived) await gmSet(JUST_REDIRECTED_KEY, null);
 
     const ownsRuleHere = hasAnyRuleForHost(rules, hostname);
+    const start = () => {
+      if (ownsRuleHere) injectPanel();
+      if (justArrived) injectPauseButton(justRedirectedFlag.ruleId);
+    };
     if (ownsRuleHere || justArrived) {
-      const start = () => injectPanel({ autoOpen: justArrived, temporary: justArrived && !ownsRuleHere });
       if (document.body) start();
       else document.addEventListener("DOMContentLoaded", start, { once: true });
     }
@@ -359,8 +383,11 @@
     // stays open and catch up the moment a rule becomes active again.
     setInterval(async () => {
       const currentRules = await getRules();
-      const url = pickRedirect(currentRules, hostname);
-      if (url) location.replace(url);
+      const m = pickRedirect(currentRules, hostname);
+      if (m) {
+        await gmSet(JUST_REDIRECTED_KEY, { url: m.redirectUrl, ruleId: m.rule.id, at: Date.now() });
+        location.replace(m.redirectUrl);
+      }
     }, RECHECK_INTERVAL_MS);
   }
 
