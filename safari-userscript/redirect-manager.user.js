@@ -330,12 +330,33 @@
       "position:fixed;bottom:16px;left:16px;z-index:2147483647;padding:8px 14px;" +
       "border-radius:20px;background:#222;color:#fff;border:1px solid #555;font-size:13px;" +
       "box-shadow:0 1px 4px rgba(0,0,0,0.4);";
-    document.body.appendChild(btn);
 
-    const dismissTimer = setTimeout(() => btn.remove(), PAUSE_BUTTON_DISPLAY_MS);
+    // Many destination sites are single-page apps that re-render and wipe
+    // document.body shortly after load, which would silently remove this
+    // button. Keep re-attaching it for as long as it's meant to be shown.
+    let active = true;
+    function attach() {
+      if (!btn.isConnected && document.body) document.body.appendChild(btn);
+    }
+    attach();
+
+    const observer = new MutationObserver(() => {
+      if (active) attach();
+    });
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+
+    function cleanup() {
+      active = false;
+      observer.disconnect();
+      btn.remove();
+    }
+
+    const dismissTimer = setTimeout(cleanup, PAUSE_BUTTON_DISPLAY_MS);
 
     btn.addEventListener("click", async () => {
       clearTimeout(dismissTimer);
+      active = false;
+      observer.disconnect();
       const rules = await getRules();
       const rule = rules.find((r) => r.id === ruleId);
       if (rule) {
