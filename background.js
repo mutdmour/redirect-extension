@@ -1,15 +1,4 @@
-const STORAGE_KEY = "rules";
-
 let rulesCache = [];
-
-function toAbsoluteUrl(value) {
-  const v = /^https?:\/\//i.test(value) ? value : `https://${value}`;
-  try {
-    return new URL(v);
-  } catch (e) {
-    return null;
-  }
-}
 
 function loadRules() {
   return browser.storage.local.get(STORAGE_KEY).then((data) => {
@@ -21,20 +10,26 @@ function saveRules() {
   return browser.storage.local.set({ [STORAGE_KEY]: rulesCache });
 }
 
-function isRuleActive(rule) {
-  if (!rule.enabled) return false;
-  if (rule.disabledUntil && rule.disabledUntil > Date.now()) return false;
-  return true;
+// Seed the default rules exactly once, ever — tracked separately from the
+// rules list itself so deleting a seeded rule later doesn't bring it back.
+async function ensureSeeded() {
+  const data = await browser.storage.local.get("seeded");
+  if (data.seeded) return;
+  await loadRules();
+  for (const { fromHost, to } of DEFAULT_RULES) {
+    rulesCache.push({ id: genId(), fromHost, to, enabled: true, disabledUntil: null });
+  }
+  await saveRules();
+  await browser.storage.local.set({ seeded: true });
 }
 
-function hostMatches(hostname, fromHost) {
-  return hostname === fromHost || hostname.endsWith(`.${fromHost}`);
-}
-
-function buildRedirectUrl(rule) {
-  const target = toAbsoluteUrl(rule.to);
-  if (!target) return null;
-  return target.href;
+// Lets content.js show a "Pause" button on the page a redirect just landed
+// on. Fire-and-forget: onBeforeRequest must return synchronously, and this
+// write doesn't need to finish before that happens.
+function rememberJustRedirected(rule, redirectUrl) {
+  browser.storage.local.set({
+    justRedirected: { url: redirectUrl, ruleId: rule.id, at: Date.now() },
+  });
 }
 
 browser.webRequest.onBeforeRequest.addListener(
@@ -48,17 +43,11 @@ browser.webRequest.onBeforeRequest.addListener(
       return {};
     }
 
-    for (const rule of rulesCache) {
-      if (!isRuleActive(rule)) continue;
-      if (!hostMatches(url.hostname, rule.fromHost)) continue;
+    const match = pickRedirect(rulesCache, url.hostname, details.url);
+    if (!match) return {};
 
-      const redirectUrl = buildRedirectUrl(rule);
-      if (redirectUrl && redirectUrl !== details.url) {
-        return { redirectUrl };
-      }
-    }
-
-    return {};
+    rememberJustRedirected(match.rule, match.redirectUrl);
+    return { redirectUrl: match.redirectUrl };
   },
   { urls: ["<all_urls>"], types: ["main_frame"] },
   ["blocking"]
@@ -104,10 +93,28 @@ browser.alarms.onAlarm.addListener((alarm) => {
       }
       if (!hostMatches(tabUrl.hostname, rule.fromHost)) continue;
       if (redirectUrl !== tab.url) {
+        rememberJustRedirected(rule, redirectUrl);
         browser.tabs.update(tab.id, { url: redirectUrl });
       }
     }
   });
 });
 
+// content.js runs on ordinary web pages, which can only reach
+// browser.storage and browser.runtime — not browser.alarms — so its pause
+// button asks the background page to actually schedule the reenable alarm.
+browser.runtime.onMessage.addListener((message) => {
+  if (!message || message.type !== "pause-rule") return;
+
+  return loadRules().then(async () => {
+    const rule = rulesCache.find((r) => r.id === message.ruleId);
+    if (!rule) return;
+    const until = Date.now() + message.minutes * 60000;
+    rule.disabledUntil = until;
+    await saveRules();
+    await browser.alarms.create(`reenable-${rule.id}`, { when: until });
+  });
+});
+
 loadRules();
+ensureSeeded();

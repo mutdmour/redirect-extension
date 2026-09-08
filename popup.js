@@ -1,10 +1,3 @@
-const STORAGE_KEY = "rules";
-const PAUSE_OPTIONS = [
-  { label: "5 min", minutes: 5 },
-  { label: "15 min", minutes: 15 },
-];
-const EXTEND_MINUTES = 15;
-
 const countdownEls = new Map();
 
 const listEl = document.getElementById("rules-list");
@@ -13,32 +6,12 @@ const form = document.getElementById("add-form");
 const fromInput = document.getElementById("from-input");
 const toInput = document.getElementById("to-input");
 
-function genId() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-}
-
-function extractHost(value) {
-  const v = /^https?:\/\//i.test(value) ? value : `https://${value}`;
-  try {
-    return new URL(v).hostname;
-  } catch (e) {
-    return null;
-  }
-}
-
 function getRules() {
   return browser.storage.local.get(STORAGE_KEY).then((d) => d[STORAGE_KEY] || []);
 }
 
 function setRules(rules) {
   return browser.storage.local.set({ [STORAGE_KEY]: rules });
-}
-
-function formatRemaining(ms) {
-  const totalSec = Math.max(0, Math.ceil(ms / 1000));
-  const m = Math.floor(totalSec / 60);
-  const s = totalSec % 60;
-  return `${m}:${String(s).padStart(2, "0")}`;
 }
 
 async function updateRule(id, mutate) {

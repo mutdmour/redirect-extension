@@ -1,0 +1,7 @@
+#!/bin/sh
+# Blocks a commit if safari-userscript/redirect-manager.user.js is out of
+# sync with shared/rules-core.js + redirect-manager.src.js.
+# Enable with: git config core.hooksPath .githooks
+
+cd "$(dirname "$0")/.."
+./build.sh --check

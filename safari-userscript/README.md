@@ -8,6 +8,12 @@ project, no code signing, no reinstalling every 7 days.
 
 ## Install
 
+`redirect-manager.user.js` is a **generated file** — it's the userscript
+header plus `../shared/rules-core.js` plus `redirect-manager.src.js`,
+concatenated by `../build.sh`. Run that after pulling changes (or after
+editing `redirect-manager.src.js` or the shared core) to regenerate it,
+then:
+
 1. In wBlock (iOS), go to the userscripts section and add
    `redirect-manager.user.js` (import by file, or paste its contents).
 2. Enable the script and make sure it's allowed to run on all sites
