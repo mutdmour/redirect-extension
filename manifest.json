@@ -2,7 +2,7 @@
   "manifest_version": 2,
   "name": "Redirect Manager",
   "version": "1.0.0",
-  "description": "Redirect one website to another. Rules can be individually toggled or paused for a set time from the toolbar popup.",
+  "description": "Redirect one website to another. Rules can be individually toggled or paused for a set time from the in-page manager panel.",
   "permissions": [
     "webRequest",
     "webRequestBlocking",
@@ -24,14 +24,6 @@
   "icons": {
     "48": "icons/icon.svg",
     "96": "icons/icon.svg"
-  },
-  "browser_action": {
-    "default_popup": "popup.html",
-    "default_title": "Redirect Manager",
-    "default_icon": {
-      "16": "icons/icon.svg",
-      "32": "icons/icon.svg"
-    }
   },
   "browser_specific_settings": {
     "gecko": {

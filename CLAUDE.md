@@ -1,18 +1,22 @@
 # Redirect Manager (Firefox extension)
 
 A Firefox WebExtension that redirects top-level page navigations from one
-site to another. Rules are managed entirely from the toolbar popup — there
-is no options page.
+site to another. There's no toolbar popup and no options page — rules are
+managed entirely from an in-page floating panel (same UI as the Safari
+build), opened via a "⇄" tab injected next to the pause button.
 
 ## Structure
 
-- `shared/rules-core.js` — the rule-matching/data logic and the
-  post-redirect pause-button widget, shared with the Safari userscript
-  (see `safari-userscript/`). Plain script, no module system: it's loaded
-  as an extra `<script>`/`js` entry ahead of each consumer (background,
-  content script, popup) so they share one global scope, and it's spliced
-  verbatim into the built userscript. Edit rule-matching logic here, not
-  in the per-platform files, so both stay in sync.
+- `shared/rules-core.js` — the rule-matching/data logic, the post-redirect
+  pause button, and the in-page manager panel (the "⇄" tab + floating
+  panel), all shared with the Safari userscript (see `safari-userscript/`).
+  Plain script, no module system: it's loaded as an extra `<script>`/`js`
+  entry ahead of each consumer (background, content script) so they share
+  one global scope, and it's spliced verbatim into the built userscript.
+  Edit rule-matching or UI logic here, not in the per-platform files, so
+  both stay in sync. Panel/pause-button code takes a `storage` param
+  (`{ getRules, setRules }`) so it doesn't need to know whether it's
+  talking to `browser.storage.local` or GM storage.
 - `manifest.json` — Manifest V2. Uses `webRequest` + `webRequestBlocking`
   (not `declarativeNetRequest`) because rules are user-editable at runtime
   and each rule needs an independent, timed pause.
@@ -21,21 +25,23 @@ is no options page.
   `onBeforeRequest` listener must stay synchronous, so it can't read
   storage directly on each request). Redirects only `main_frame` requests.
   Seeds `DEFAULT_RULES` once (see Data model). Records a `justRedirected`
-  flag in storage whenever it redirects, and handles a `pause-rule` runtime
-  message from `content.js` (content scripts can't call `browser.alarms`
-  directly).
-- `content.js` — runs on every page. If `justRedirected` in storage points
-  at the current URL and is recent, shows the shared pause-button widget
-  (via `injectPauseButton` from `shared/rules-core.js`), then messages the
-  background script to actually pause the rule.
-- `popup.html` / `popup.js` / `popup.css` — the entire UI: add-rule form,
-  rule list, per-rule enable/disable checkbox, per-rule "Pause for…"
-  dropdown (5 min / 15 min / 1 hr), delete button, live countdown.
+  flag in storage whenever it redirects. Also reactively reconciles
+  `browser.alarms` from the rules list on every `storage.onChanged` (see
+  Data model) — this is the only thing that needs `browser.alarms`, since
+  `content.js` (a content script) can't call it directly and now just
+  writes `disabledUntil` straight into storage, same as the panel and the
+  Safari userscript.
+- `content.js` — runs on every page. Shows the shared manager panel (via
+  `injectManagerPanel`) on any page whose hostname owns a rule, and shows
+  the shared pause-button widget (via `injectPauseButton`) when
+  `justRedirected` in storage points at the current URL and is recent.
+  Both read/write rules straight to `browser.storage.local` — no messaging
+  the background script needed.
 - `safari-userscript/` — the Safari (iOS, via wBlock) build. See its
   README for why it exists and how it differs. `redirect-manager.src.js`
-  holds the Safari-only wrapper (GM storage adapter, the in-page manager
-  panel, the poll loop). `redirect-manager.user.js` is a **generated
-  file** — `build.sh` concatenates the userscript header,
+  holds the Safari-only wrapper (GM storage adapter, seeding, the
+  redirect/visibility-recheck logic). `redirect-manager.user.js` is a
+  **generated file** — `build.sh` concatenates the userscript header,
   `shared/rules-core.js`, and `redirect-manager.src.js` into it; don't
   hand-edit it.
 
@@ -54,28 +60,34 @@ Rules are stored under `storage.local["rules"]` as an array of:
   path, if any) — the original request's path/query/hash is dropped, not
   appended.
 - `enabled` — manual on/off toggle.
-- `disabledUntil` — epoch ms; set when a rule is paused via the popup
-  dropdown, or via the post-redirect pause button injected by `content.js`.
-  A rule is active only if `enabled` is true AND (`disabledUntil` is null
-  or in the past).
+- `disabledUntil` — epoch ms; set when a rule is paused via the manager
+  panel's dropdown, or via the post-redirect pause button — both just
+  write it straight into storage. A rule is active only if `enabled` is
+  true AND (`disabledUntil` is null or in the past).
 
 `DEFAULT_RULES` (in `shared/rules-core.js`) is seeded into storage exactly
 once, ever, on first run — tracked by a separate `seeded` flag so deleting
 a seeded rule later doesn't bring it back. Same seed list on both
 platforms, so a fresh install auto-redirects those domains immediately.
 
-Pauses are implemented with `browser.alarms` (`reenable-<ruleId>`) so they
-survive popup close. The alarm handler clears the stale `disabledUntil`
-flag (the `onBeforeRequest` check already treats an expired `disabledUntil`
-as active on its own) and also redirects any currently-active tab that's
-already sitting on the rule's `fromHost` — otherwise a dormant tab open
-before the pause ended wouldn't trigger a new `main_frame` request and
-would sit un-redirected until the user next navigated.
+On Firefox, pauses additionally wake a dormant tab via `browser.alarms`
+(`reenable-<ruleId>`), which `background.js` reactively (re)schedules or
+clears from `storage.onChanged` to match each rule's current
+`disabledUntil` — callers (the panel, the pause button) never create or
+clear alarms themselves, they just write `disabledUntil`. The alarm
+handler clears the stale `disabledUntil` flag (the `onBeforeRequest` check
+already treats an expired `disabledUntil` as active on its own) and also
+redirects any currently-active tab that's already sitting on the rule's
+`fromHost` — otherwise a dormant tab open before the pause ended wouldn't
+trigger a new `main_frame` request and would sit un-redirected until the
+user next navigated. Safari has no `browser.alarms`; it covers the same
+gap with a `visibilitychange`/`pageshow` recheck instead (see the Safari
+README).
 
 ## Conventions / constraints to preserve
 
-- Keep all rule management in the popup — don't add an options page unless
-  asked (explicit UX decision).
+- Keep all rule management in the in-page manager panel — don't add a
+  toolbar popup or an options page unless asked (explicit UX decision).
 - Redirects must stay scoped to `main_frame` only — don't widen to other
   resource types without asking (explicit UX decision).
 - No master on/off switch — each rule has its own enable/disable and pause

@@ -53,9 +53,34 @@ browser.webRequest.onBeforeRequest.addListener(
   ["blocking"]
 );
 
+// content.js's pause button and the in-page manager panel (shared with the
+// Safari userscript) write disabledUntil straight into storage — neither a
+// content script nor a userscript can call browser.alarms itself, so this
+// reactively (re)schedules or clears each rule's wake-up alarm to match,
+// instead of every caller having to know about alarms.
+async function reconcileAlarms(rules) {
+  const activeIds = new Set(rules.map((r) => r.id));
+  const alarms = await browser.alarms.getAll();
+  for (const alarm of alarms) {
+    if (!alarm.name.startsWith("reenable-")) continue;
+    if (!activeIds.has(alarm.name.slice("reenable-".length))) {
+      await browser.alarms.clear(alarm.name);
+    }
+  }
+  for (const rule of rules) {
+    const alarmName = `reenable-${rule.id}`;
+    if (rule.disabledUntil && rule.disabledUntil > Date.now()) {
+      await browser.alarms.create(alarmName, { when: rule.disabledUntil });
+    } else {
+      await browser.alarms.clear(alarmName);
+    }
+  }
+}
+
 browser.storage.onChanged.addListener((changes, area) => {
   if (area === "local" && changes[STORAGE_KEY]) {
     rulesCache = changes[STORAGE_KEY].newValue || [];
+    reconcileAlarms(rulesCache);
   }
 });
 
@@ -97,22 +122,6 @@ browser.alarms.onAlarm.addListener((alarm) => {
         browser.tabs.update(tab.id, { url: redirectUrl });
       }
     }
-  });
-});
-
-// content.js runs on ordinary web pages, which can only reach
-// browser.storage and browser.runtime — not browser.alarms — so its pause
-// button asks the background page to actually schedule the reenable alarm.
-browser.runtime.onMessage.addListener((message) => {
-  if (!message || message.type !== "pause-rule") return;
-
-  return loadRules().then(async () => {
-    const rule = rulesCache.find((r) => r.id === message.ruleId);
-    if (!rule) return;
-    const until = Date.now() + message.minutes * 60000;
-    rule.disabledUntil = until;
-    await saveRules();
-    await browser.alarms.create(`reenable-${rule.id}`, { when: until });
   });
 });
 

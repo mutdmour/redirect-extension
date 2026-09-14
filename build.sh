@@ -17,7 +17,6 @@ python3 -mjson.tool manifest.json > /dev/null
 node -c shared/rules-core.js
 node -c background.js
 node -c content.js
-node -c popup.js
 node -c safari-userscript/redirect-manager.src.js
 
 USERSCRIPT_HEADER='// ==UserScript==
@@ -38,7 +37,7 @@ USERSCRIPT_HEADER='// ==UserScript==
 # shared/rules-core.js's BUILD_HASH placeholder and shown in the pause
 # button ("Pause 15m (vHASH)") on both platforms, so it's obvious whether
 # a freshly loaded package/userscript is actually running the latest edit.
-BUILD_HASH=$(cat shared/rules-core.js background.js content.js popup.js safari-userscript/redirect-manager.src.js | shasum -a 256 | cut -c1-8)
+BUILD_HASH=$(cat shared/rules-core.js background.js content.js safari-userscript/redirect-manager.src.js | shasum -a 256 | cut -c1-8)
 
 tmp_shared=$(mktemp)
 tmp_check=$(mktemp)
@@ -68,12 +67,12 @@ fi
 # copy (which keeps the "dev" placeholder as source), so stage a build
 # directory instead of zipping the repo files directly.
 mkdir -p "$stage/shared"
-cp manifest.json background.js content.js popup.html popup.js popup.css "$stage/"
+cp manifest.json background.js content.js "$stage/"
 cp -r icons "$stage/icons"
 cp "$tmp_shared" "$stage/shared/rules-core.js"
 
 rm -f redirect-extension.xpi
-(cd "$stage" && zip -r -FS "$OLDPWD/redirect-extension.xpi" manifest.json background.js content.js popup.html popup.js popup.css shared icons -x ".*")
+(cd "$stage" && zip -r -FS "$OLDPWD/redirect-extension.xpi" manifest.json background.js content.js shared icons -x ".*")
 echo "Built redirect-extension.xpi"
 
 build_userscript > safari-userscript/redirect-manager.user.js

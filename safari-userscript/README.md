@@ -23,12 +23,13 @@ then:
 
 ## Usage
 
-The extension has no toolbar popup (userscript engines don't expose one).
-Instead, a small "⇄" tab appears in the bottom-right corner **only on
-pages whose hostname already has a redirect rule** — tap it to open the
-rule manager: add a rule, toggle it on/off, pause it for 5/15 minutes, or
-delete it. Rules are stored via the userscript engine's own storage
-(`GM_setValue`/`GM_getValue`), shared across all sites.
+Neither platform has a toolbar popup, so rule management is the same
+in-page floating panel on both (shared logic lives in
+`../shared/rules-core.js`). A small "⇄" tab appears next to the pause
+button **only on pages whose hostname already has a redirect rule** — tap
+it to open the rule manager: add a rule, toggle it on/off, pause it for
+5/15 minutes, or delete it. Rules are stored via the userscript engine's
+own storage (`GM_setValue`/`GM_getValue`), shared across all sites.
 
 The script seeds one default rule the very first time it runs:
 `reddit.com` → `https://app.mutasem.dev`. That rule (as long as it exists)
@@ -39,19 +40,17 @@ no page left where the tab shows up to add a new one (the default is only
 seeded once, ever — deleting it won't bring it back).
 
 Right after a redirect fires, a small "Pause 15m" button also appears on
-the destination page (bottom-left) for 60 seconds — even if the
-destination host has no rule of its own. Tapping it pauses the specific
-rule that just redirected you for 15 minutes, without opening the full
-panel; it disappears on its own after 60 seconds if you don't tap it.
-This works by writing a short-lived flag (which rule, and the destination
-URL) via the userscript engine's storage right before `location.replace()`,
-since a query-string signal would change the landing URL and
-`sessionStorage` doesn't cross origins.
+the destination page (bottom-left, next to the manager tab if both apply)
+for 60 seconds — even if the destination host has no rule of its own.
+Tapping it pauses the specific rule that just redirected you for 15
+minutes, without opening the full panel; it disappears on its own after
+60 seconds if you don't tap it. This works by writing a short-lived flag
+(which rule, and the destination URL) via the userscript engine's storage
+right before `location.replace()`, since a query-string signal would
+change the landing URL and `sessionStorage` doesn't cross origins.
 
 ## Known differences from the Firefox extension
 
-- **No toolbar popup** — replaced by the in-page floating panel described
-  above, since userscript engines don't provide a browser-action popup.
 - **No `browser.alarms`** — a paused rule resumes the next time the
   userscript runs on that page: on load, or when the tab becomes visible
   again (`visibilitychange`/`pageshow`), instead of via an alarm waking a

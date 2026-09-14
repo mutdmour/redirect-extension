@@ -43,6 +43,8 @@
     return gmSet(STORAGE_KEY, rules);
   }
 
+  const storage = { getRules, setRules };
+
   // Seed the default rules exactly once, ever — tracked separately from the
   // rules list itself so deleting a seeded rule later doesn't bring it back.
   async function ensureSeeded() {
@@ -54,201 +56,6 @@
     }
     await setRules(rules);
     await gmSet("seeded", true);
-  }
-
-  // --- Management panel ------------------------------------------------
-  // No browser-action popup is available to a userscript, so the rule
-  // manager is a small floating tab injected into every page instead.
-
-  let panelEl = null;
-  let countdownTimer = null;
-  const countdownEls = new Map();
-
-  function tickCountdowns() {
-    for (const { el, disabledUntil } of countdownEls.values()) {
-      el.textContent = `Paused — resumes in ${formatRemaining(disabledUntil - Date.now())}`;
-    }
-  }
-
-  async function renderPanel() {
-    if (!panelEl) return;
-    const rules = await getRules();
-    const list = panelEl.querySelector("#rm-list");
-    const empty = panelEl.querySelector("#rm-empty");
-    list.innerHTML = "";
-    countdownEls.clear();
-    empty.style.display = rules.length ? "none" : "block";
-
-    for (const rule of rules) {
-      const isPaused = Boolean(rule.disabledUntil && rule.disabledUntil > Date.now());
-
-      const li = document.createElement("li");
-      li.style.cssText =
-        "display:flex;flex-direction:column;gap:6px;padding:10px 0;border-bottom:1px solid #333;";
-
-      const info = document.createElement("div");
-      info.style.cssText = "font-size:13px;color:#eee;word-break:break-all;";
-      info.innerHTML = `<strong>${rule.fromHost}</strong> &rarr; ${rule.to}`;
-      li.appendChild(info);
-
-      if (isPaused) {
-        const countdown = document.createElement("div");
-        countdown.style.cssText = "font-size:12px;color:#f6c453;";
-        countdown.textContent = `Paused — resumes in ${formatRemaining(rule.disabledUntil - Date.now())}`;
-        li.appendChild(countdown);
-        countdownEls.set(rule.id, { el: countdown, disabledUntil: rule.disabledUntil });
-      }
-
-      const controls = document.createElement("div");
-      controls.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;";
-
-      const toggle = document.createElement("input");
-      toggle.type = "checkbox";
-      toggle.checked = rule.enabled && !isPaused;
-      toggle.addEventListener("change", async () => {
-        const current = await getRules();
-        const r = current.find((x) => x.id === rule.id);
-        if (!r) return;
-        r.enabled = toggle.checked;
-        r.disabledUntil = null;
-        await setRules(current);
-        renderPanel();
-      });
-      controls.appendChild(toggle);
-
-      if (isPaused) {
-        const extendBtn = document.createElement("button");
-        extendBtn.type = "button";
-        extendBtn.textContent = `+${EXTEND_MINUTES}m`;
-        extendBtn.style.cssText = rmButtonStyle();
-        extendBtn.addEventListener("click", async () => {
-          const current = await getRules();
-          const r = current.find((x) => x.id === rule.id);
-          if (!r) return;
-          r.disabledUntil = (r.disabledUntil || Date.now()) + EXTEND_MINUTES * 60000;
-          await setRules(current);
-          renderPanel();
-        });
-        controls.appendChild(extendBtn);
-      } else {
-        const pauseSelect = document.createElement("select");
-        pauseSelect.style.cssText = "font-size:12px;padding:2px;";
-        const def = document.createElement("option");
-        def.textContent = "Pause for…";
-        def.value = "";
-        pauseSelect.appendChild(def);
-        for (const opt of PAUSE_OPTIONS) {
-          const o = document.createElement("option");
-          o.value = String(opt.minutes);
-          o.textContent = opt.label;
-          pauseSelect.appendChild(o);
-        }
-        pauseSelect.addEventListener("change", async () => {
-          const minutes = Number(pauseSelect.value);
-          if (!minutes) return;
-          const current = await getRules();
-          const r = current.find((x) => x.id === rule.id);
-          if (!r) return;
-          r.disabledUntil = Date.now() + minutes * 60000;
-          await setRules(current);
-          renderPanel();
-        });
-        controls.appendChild(pauseSelect);
-      }
-
-      const deleteBtn = document.createElement("button");
-      deleteBtn.type = "button";
-      deleteBtn.textContent = "Delete";
-      deleteBtn.style.cssText = rmButtonStyle();
-      deleteBtn.addEventListener("click", async () => {
-        const current = await getRules();
-        await setRules(current.filter((x) => x.id !== rule.id));
-        renderPanel();
-      });
-      controls.appendChild(deleteBtn);
-
-      li.appendChild(controls);
-      list.appendChild(li);
-    }
-  }
-
-  function rmButtonStyle() {
-    return "font-size:12px;padding:3px 8px;background:#333;color:#eee;border:1px solid #555;border-radius:4px;";
-  }
-
-  function injectPanel() {
-    if (panelEl || !document.body) return;
-
-    const tab = document.createElement("button");
-    tab.textContent = "⇄";
-    tab.title = "Redirect Manager";
-    tab.style.cssText =
-      "position:fixed;bottom:16px;right:16px;z-index:2147483647;width:40px;height:40px;" +
-      "border-radius:50%;background:#222;color:#fff;border:1px solid #555;font-size:18px;" +
-      "opacity:0.55;box-shadow:0 1px 4px rgba(0,0,0,0.4);";
-
-    const panel = document.createElement("div");
-    panel.style.cssText =
-      "position:fixed;inset:8vh 5vw;z-index:2147483647;background:#1b1b1b;color:#eee;" +
-      "border-radius:10px;padding:14px;display:none;flex-direction:column;gap:10px;" +
-      "font:13px -apple-system,sans-serif;box-shadow:0 4px 20px rgba(0,0,0,0.6);overflow:auto;";
-    panel.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:center;">
-        <strong style="font-size:15px;">Redirect Manager</strong>
-        <button id="rm-close" style="${rmButtonStyle()}">Close</button>
-      </div>
-      <form id="rm-form" style="display:flex;gap:6px;flex-wrap:wrap;">
-        <input id="rm-from" placeholder="From (old-site.com)" required
-          style="flex:1;min-width:120px;padding:6px;background:#111;color:#eee;border:1px solid #444;border-radius:4px;" />
-        <input id="rm-to" placeholder="To (new-site.com)" required
-          style="flex:1;min-width:120px;padding:6px;background:#111;color:#eee;border:1px solid #444;border-radius:4px;" />
-        <button type="submit" style="${rmButtonStyle()}">Add</button>
-      </form>
-      <ul id="rm-list" style="list-style:none;margin:0;padding:0;"></ul>
-      <p id="rm-empty" style="color:#999;">No redirect rules yet.</p>
-    `;
-
-    document.body.appendChild(tab);
-    document.body.appendChild(panel);
-    panelEl = panel;
-
-    function openPanel() {
-      panel.style.display = "flex";
-      renderPanel();
-      if (!countdownTimer) countdownTimer = setInterval(tickCountdowns, 1000);
-    }
-
-    function closePanel() {
-      panel.style.display = "none";
-      if (countdownTimer) {
-        clearInterval(countdownTimer);
-        countdownTimer = null;
-      }
-    }
-
-    tab.addEventListener("click", () => {
-      if (panel.style.display === "none") openPanel();
-      else closePanel();
-    });
-
-    panel.querySelector("#rm-close").addEventListener("click", closePanel);
-
-    panel.querySelector("#rm-form").addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const fromInput = panel.querySelector("#rm-from");
-      const toInput = panel.querySelector("#rm-to");
-      const fromHost = extractHost(fromInput.value);
-      const to = toInput.value.trim();
-      if (!fromHost || !to) return;
-
-      const rules = await getRules();
-      rules.push({ id: genId(), fromHost, to, enabled: true, disabledUntil: null });
-      await setRules(rules);
-
-      fromInput.value = "";
-      toInput.value = "";
-      renderPanel();
-    });
   }
 
   async function main() {
@@ -288,18 +95,11 @@
 
     const ownsRuleHere = hasAnyRuleForHost(rules, hostname);
     const start = () => {
-      if (ownsRuleHere) injectPanel();
+      if (ownsRuleHere) injectManagerPanel(storage);
       if (justArrived) {
         injectPauseButton(
           POST_REDIRECT_PAUSE_MINUTES,
-          async () => {
-            const current = await getRules();
-            const rule = current.find((r) => r.id === justRedirectedFlag.ruleId);
-            if (rule) {
-              rule.disabledUntil = Date.now() + POST_REDIRECT_PAUSE_MINUTES * 60000;
-              await setRules(current);
-            }
-          },
+          () => pauseRule(storage, justRedirectedFlag.ruleId, POST_REDIRECT_PAUSE_MINUTES),
           `v${BUILD_HASH}`
         );
       }
