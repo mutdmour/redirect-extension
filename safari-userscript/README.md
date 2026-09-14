@@ -53,11 +53,10 @@ since a query-string signal would change the landing URL and
 - **No toolbar popup** — replaced by the in-page floating panel described
   above, since userscript engines don't provide a browser-action popup.
 - **No `browser.alarms`** — a paused rule resumes the next time the
-  userscript runs on that page (on load, or via a 15s poll while the page
-  stays open), instead of via an alarm waking a dormant tab. Functionally
-  equivalent for a tab you're actively looking at; a tab left open and
-  totally idle in the background could take up to 15s to catch up once
-  the pause expires, rather than being instant.
+  userscript runs on that page: on load, or when the tab becomes visible
+  again (`visibilitychange`/`pageshow`), instead of via an alarm waking a
+  dormant tab. Functionally equivalent for a tab you actually return to; a
+  tab left open and never revisited just won't redirect until you do.
 - **Redirect happens via `location.replace()`, not a blocked network
   request** — the redirect check is async (a `GM.getValue` storage
   round-trip), so instead of an inconsistent flash of the original page's

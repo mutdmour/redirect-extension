@@ -77,11 +77,11 @@ function hasAnyRuleForHost(rules, hostname) {
 // undo it without opening the full rule manager. Shared between the Firefox
 // content script and the Safari userscript — only `onPause` differs (how
 // each platform actually persists the pause).
-function injectPauseButton(minutes, onPause) {
+function injectPauseButton(minutes, onPause, versionLabel) {
   if (!document.body) return;
 
   const btn = document.createElement("button");
-  btn.textContent = `Pause ${minutes}m`;
+  btn.textContent = versionLabel ? `Pause ${minutes}m (${versionLabel})` : `Pause ${minutes}m`;
   btn.style.cssText =
     "position:fixed;bottom:16px;left:16px;z-index:2147483647;padding:8px 14px;" +
     "border-radius:20px;background:#222;color:#fff;border:1px solid #555;font-size:13px;" +

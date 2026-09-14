@@ -90,11 +90,11 @@ function hasAnyRuleForHost(rules, hostname) {
 // undo it without opening the full rule manager. Shared between the Firefox
 // content script and the Safari userscript — only `onPause` differs (how
 // each platform actually persists the pause).
-function injectPauseButton(minutes, onPause) {
+function injectPauseButton(minutes, onPause, versionLabel) {
   if (!document.body) return;
 
   const btn = document.createElement("button");
-  btn.textContent = `Pause ${minutes}m`;
+  btn.textContent = versionLabel ? `Pause ${minutes}m (${versionLabel})` : `Pause ${minutes}m`;
   btn.style.cssText =
     "position:fixed;bottom:16px;left:16px;z-index:2147483647;padding:8px 14px;" +
     "border-radius:20px;background:#222;color:#fff;border:1px solid #555;font-size:13px;" +
@@ -135,9 +135,12 @@ function injectPauseButton(minutes, onPause) {
 (function () {
   "use strict";
 
-  const RECHECK_INTERVAL_MS = 15000;
   const JUST_REDIRECTED_KEY = "justRedirected";
   const HIDE_TIMEOUT_MS = 2000;
+  // Replaced by build.sh with a content hash of shared/rules-core.js +
+  // this file, so the pause button can show which build wBlock is
+  // actually running.
+  const BUILD_HASH = "86becc75";
 
   // The redirect check is async (GM storage round-trip), so the original
   // page can render for a moment before location.replace() fires. Hide it
@@ -425,14 +428,18 @@ function injectPauseButton(minutes, onPause) {
     const start = () => {
       if (ownsRuleHere) injectPanel();
       if (justArrived) {
-        injectPauseButton(POST_REDIRECT_PAUSE_MINUTES, async () => {
-          const current = await getRules();
-          const rule = current.find((r) => r.id === justRedirectedFlag.ruleId);
-          if (rule) {
-            rule.disabledUntil = Date.now() + POST_REDIRECT_PAUSE_MINUTES * 60000;
-            await setRules(current);
-          }
-        });
+        injectPauseButton(
+          POST_REDIRECT_PAUSE_MINUTES,
+          async () => {
+            const current = await getRules();
+            const rule = current.find((r) => r.id === justRedirectedFlag.ruleId);
+            if (rule) {
+              rule.disabledUntil = Date.now() + POST_REDIRECT_PAUSE_MINUTES * 60000;
+              await setRules(current);
+            }
+          },
+          `v${BUILD_HASH}`
+        );
       }
     };
     if (ownsRuleHere || justArrived) {
@@ -440,17 +447,23 @@ function injectPauseButton(minutes, onPause) {
       else document.addEventListener("DOMContentLoaded", start, { once: true });
     }
 
-    // browser.alarms isn't available to a userscript, so instead of an
-    // alarm waking a dormant tab when a pause expires, poll while the page
-    // stays open and catch up the moment a rule becomes active again.
-    setInterval(async () => {
+    // browser.alarms isn't available to a userscript, so a paused rule
+    // can't be woken by an alarm while its tab sits dormant. Instead,
+    // recheck only when the tab is actually being looked at again — that's
+    // the only moment a stale redirect would be observable — rather than
+    // polling on a timer regardless of whether anyone's there.
+    async function recheckRedirect() {
       const currentRules = await getRules();
       const m = pickRedirect(currentRules, hostname, location.href);
       if (m) {
         await gmSet(JUST_REDIRECTED_KEY, { url: m.redirectUrl, ruleId: m.rule.id, at: Date.now() });
         location.replace(m.redirectUrl);
       }
-    }, RECHECK_INTERVAL_MS);
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") recheckRedirect();
+    });
+    window.addEventListener("pageshow", recheckRedirect);
   }
 
   main();

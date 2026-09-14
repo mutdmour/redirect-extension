@@ -35,10 +35,15 @@ USERSCRIPT_HEADER='// ==UserScript==
 '
 
 build_userscript() {
+  # Content hash of the two source files that make up the userscript body,
+  # shown in the pause button ("Pause 15m (vHASH)") so it's obvious whether
+  # wBlock is actually running the latest edit.
+  hash=$(cat shared/rules-core.js safari-userscript/redirect-manager.src.js | shasum -a 256 | cut -c1-8)
+
   printf '%s\n' "$USERSCRIPT_HEADER"
   cat shared/rules-core.js
   echo
-  cat safari-userscript/redirect-manager.src.js
+  sed "s/const BUILD_HASH = \"dev\";/const BUILD_HASH = \"$hash\";/" safari-userscript/redirect-manager.src.js
 }
 
 if [ "$CHECK" = 1 ]; then
