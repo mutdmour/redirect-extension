@@ -22,6 +22,12 @@ const EXTEND_MINUTES = 15;
 const POST_REDIRECT_PAUSE_MINUTES = 15;
 const PAUSE_BUTTON_DISPLAY_MS = 60000;
 const JUST_REDIRECTED_WINDOW_MS = 10000;
+// Replaced by build.sh with a content hash of the extension's source, so
+// the pause button can show which build is actually running (shared by
+// both platforms since both load this file). Left as "dev" when a file
+// is loaded straight from the source tree without going through the
+// build (e.g. Firefox's unpacked "Reload").
+const BUILD_HASH = "add62950";
 
 // Seeded once, ever, on first run so there's an example rule to build from.
 const DEFAULT_RULES = [
@@ -137,10 +143,6 @@ function injectPauseButton(minutes, onPause, versionLabel) {
 
   const JUST_REDIRECTED_KEY = "justRedirected";
   const HIDE_TIMEOUT_MS = 2000;
-  // Replaced by build.sh with a content hash of shared/rules-core.js +
-  // this file, so the pause button can show which build wBlock is
-  // actually running.
-  const BUILD_HASH = "86becc75";
 
   // The redirect check is async (GM storage round-trip), so the original
   // page can render for a moment before location.replace() fires. Hide it

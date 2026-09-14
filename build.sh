@@ -34,23 +34,29 @@ USERSCRIPT_HEADER='// ==UserScript==
 // ==/UserScript==
 '
 
-build_userscript() {
-  # Content hash of the two source files that make up the userscript body,
-  # shown in the pause button ("Pause 15m (vHASH)") so it's obvious whether
-  # wBlock is actually running the latest edit.
-  hash=$(cat shared/rules-core.js safari-userscript/redirect-manager.src.js | shasum -a 256 | cut -c1-8)
+# One content hash for the whole extension, substituted into
+# shared/rules-core.js's BUILD_HASH placeholder and shown in the pause
+# button ("Pause 15m (vHASH)") on both platforms, so it's obvious whether
+# a freshly loaded package/userscript is actually running the latest edit.
+BUILD_HASH=$(cat shared/rules-core.js background.js content.js popup.js safari-userscript/redirect-manager.src.js | shasum -a 256 | cut -c1-8)
 
+tmp_shared=$(mktemp)
+tmp_check=$(mktemp)
+stage=$(mktemp -d)
+trap 'rm -f "$tmp_shared" "$tmp_check"; rm -rf "$stage"' EXIT
+
+sed "s/const BUILD_HASH = \"dev\";/const BUILD_HASH = \"$BUILD_HASH\";/" shared/rules-core.js > "$tmp_shared"
+
+build_userscript() {
   printf '%s\n' "$USERSCRIPT_HEADER"
-  cat shared/rules-core.js
+  cat "$tmp_shared"
   echo
-  sed "s/const BUILD_HASH = \"dev\";/const BUILD_HASH = \"$hash\";/" safari-userscript/redirect-manager.src.js
+  cat safari-userscript/redirect-manager.src.js
 }
 
 if [ "$CHECK" = 1 ]; then
-  tmp=$(mktemp)
-  trap 'rm -f "$tmp"' EXIT
-  build_userscript > "$tmp"
-  if ! diff -q "$tmp" safari-userscript/redirect-manager.user.js > /dev/null 2>&1; then
+  build_userscript > "$tmp_check"
+  if ! diff -q "$tmp_check" safari-userscript/redirect-manager.user.js > /dev/null 2>&1; then
     echo "safari-userscript/redirect-manager.user.js is stale — run ./build.sh and commit the result." >&2
     exit 1
   fi
@@ -58,8 +64,16 @@ if [ "$CHECK" = 1 ]; then
   exit 0
 fi
 
+# The .xpi needs the substituted shared/rules-core.js, not the working-tree
+# copy (which keeps the "dev" placeholder as source), so stage a build
+# directory instead of zipping the repo files directly.
+mkdir -p "$stage/shared"
+cp manifest.json background.js content.js popup.html popup.js popup.css "$stage/"
+cp -r icons "$stage/icons"
+cp "$tmp_shared" "$stage/shared/rules-core.js"
+
 rm -f redirect-extension.xpi
-zip -r -FS redirect-extension.xpi manifest.json background.js content.js popup.html popup.js popup.css shared icons -x ".*"
+(cd "$stage" && zip -r -FS "$OLDPWD/redirect-extension.xpi" manifest.json background.js content.js popup.html popup.js popup.css shared icons -x ".*")
 echo "Built redirect-extension.xpi"
 
 build_userscript > safari-userscript/redirect-manager.user.js

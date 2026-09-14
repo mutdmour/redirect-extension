@@ -12,12 +12,15 @@
 
     await browser.storage.local.remove("justRedirected");
 
-    injectPauseButton(POST_REDIRECT_PAUSE_MINUTES, () =>
-      browser.runtime.sendMessage({
-        type: "pause-rule",
-        ruleId: flag.ruleId,
-        minutes: POST_REDIRECT_PAUSE_MINUTES,
-      })
+    injectPauseButton(
+      POST_REDIRECT_PAUSE_MINUTES,
+      () =>
+        browser.runtime.sendMessage({
+          type: "pause-rule",
+          ruleId: flag.ruleId,
+          minutes: POST_REDIRECT_PAUSE_MINUTES,
+        }),
+      `v${BUILD_HASH}`
     );
   }
 
