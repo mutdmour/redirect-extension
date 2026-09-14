@@ -21,7 +21,7 @@
     if (!ownsRuleHere && !justArrived) return;
 
     const start = () => {
-      if (ownsRuleHere) injectManagerPanel(storage);
+      if (ownsRuleHere || justArrived) injectManagerPanel(storage);
       if (justArrived) {
         injectPauseButton(
           POST_REDIRECT_PAUSE_MINUTES,

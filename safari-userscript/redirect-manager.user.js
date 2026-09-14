@@ -27,13 +27,14 @@ const JUST_REDIRECTED_WINDOW_MS = 10000;
 // both platforms since both load this file). Left as "dev" when a file
 // is loaded straight from the source tree without going through the
 // build (e.g. Firefox's unpacked "Reload").
-const BUILD_HASH = "9da0f1c4";
+const BUILD_HASH = "e9ef21f1";
 
 // Seeded once, ever, on first run so there's an example rule to build from.
-const DEFAULT_RULES = [
-  { fromHost: "reddit.com", to: "https://app.mutasem.dev" },
-  { fromHost: "www.reddit.com", to: "https://app.mutasem.dev" },
-];
+// hostMatches() already treats a fromHost as covering its subdomains, so
+// "reddit.com" alone also covers "www.reddit.com" — a separate entry for
+// it would just be a second rule racing the first to redirect the same
+// hostname (and having to be paused separately).
+const DEFAULT_RULES = [{ fromHost: "reddit.com", to: "https://app.mutasem.dev" }];
 
 function genId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -462,7 +463,7 @@ function injectManagerPanel(storage) {
 
     const ownsRuleHere = hasAnyRuleForHost(rules, hostname);
     const start = () => {
-      if (ownsRuleHere) injectManagerPanel(storage);
+      if (ownsRuleHere || justArrived) injectManagerPanel(storage);
       if (justArrived) {
         injectPauseButton(
           POST_REDIRECT_PAUSE_MINUTES,

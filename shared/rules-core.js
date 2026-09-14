@@ -17,10 +17,11 @@ const JUST_REDIRECTED_WINDOW_MS = 10000;
 const BUILD_HASH = "dev";
 
 // Seeded once, ever, on first run so there's an example rule to build from.
-const DEFAULT_RULES = [
-  { fromHost: "reddit.com", to: "https://app.mutasem.dev" },
-  { fromHost: "www.reddit.com", to: "https://app.mutasem.dev" },
-];
+// hostMatches() already treats a fromHost as covering its subdomains, so
+// "reddit.com" alone also covers "www.reddit.com" — a separate entry for
+// it would just be a second rule racing the first to redirect the same
+// hostname (and having to be paused separately).
+const DEFAULT_RULES = [{ fromHost: "reddit.com", to: "https://app.mutasem.dev" }];
 
 function genId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;

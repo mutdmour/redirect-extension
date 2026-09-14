@@ -26,10 +26,12 @@ then:
 Neither platform has a toolbar popup, so rule management is the same
 in-page floating panel on both (shared logic lives in
 `../shared/rules-core.js`). A small "⇄" tab appears next to the pause
-button **only on pages whose hostname already has a redirect rule** — tap
-it to open the rule manager: add a rule, toggle it on/off, pause it for
-5/15 minutes, or delete it. Rules are stored via the userscript engine's
-own storage (`GM_setValue`/`GM_getValue`), shared across all sites.
+button on pages whose hostname already has a redirect rule, and also
+right after a redirect fires (on the destination page, even if it has no
+rule of its own) — tap it to open the rule manager: add a rule, toggle it
+on/off, pause it for 5/15 minutes, or delete it. Rules are stored via the
+userscript engine's own storage (`GM_setValue`/`GM_getValue`), shared
+across all sites.
 
 The script seeds one default rule the very first time it runs:
 `reddit.com` → `https://app.mutasem.dev`. That rule (as long as it exists)
