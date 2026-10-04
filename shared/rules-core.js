@@ -6,7 +6,8 @@ const PAUSE_OPTIONS = [
   { label: "15 min", minutes: 15 },
 ];
 const EXTEND_MINUTES = 15;
-const POST_REDIRECT_PAUSE_MINUTES = 15;
+const POST_REDIRECT_PAUSE_MINUTES = 5;
+const PAUSE_BUTTON_DELAY_MS = 15000;
 const PAUSE_BUTTON_DISPLAY_MS = 60000;
 const JUST_REDIRECTED_WINDOW_MS = 10000;
 // Replaced by build.sh with a content hash of the extension's source, so
@@ -118,7 +119,8 @@ function injectPauseButton(minutes, onPause, versionLabel) {
   if (!document.body) return;
 
   const btn = document.createElement("button");
-  btn.textContent = versionLabel ? `Pause ${minutes}m (${versionLabel})` : `Pause ${minutes}m`;
+  const idleLabel = versionLabel ? `Pause ${minutes}m (${versionLabel})` : `Pause ${minutes}m`;
+  btn.textContent = idleLabel;
   btn.style.cssText =
     "padding:8px 14px;border-radius:20px;background:#222;color:#fff;border:1px solid #555;" +
     "font-size:13px;box-shadow:0 1px 4px rgba(0,0,0,0.4);";
@@ -146,13 +148,45 @@ function injectPauseButton(minutes, onPause, versionLabel) {
 
   const dismissTimer = setTimeout(cleanup, PAUSE_BUTTON_DISPLAY_MS);
 
+  // Three stages: idle -> 15s countdown (click again to cancel) -> awaiting
+  // confirmation (click to actually pause). The pause only takes effect on
+  // that final click.
+  let stage = "idle";
+  let countdownTimer = null;
+
+  function reset() {
+    clearInterval(countdownTimer);
+    stage = "idle";
+    btn.textContent = idleLabel;
+  }
+
   btn.addEventListener("click", async () => {
-    clearTimeout(dismissTimer);
-    active = false;
-    observer.disconnect();
-    await onPause();
-    btn.textContent = "Paused ✓";
-    setTimeout(() => btn.remove(), 1200);
+    if (stage === "idle") {
+      clearTimeout(dismissTimer);
+      stage = "counting";
+      const endsAt = Date.now() + PAUSE_BUTTON_DELAY_MS;
+      const tick = () => {
+        const left = endsAt - Date.now();
+        if (left <= 0) {
+          clearInterval(countdownTimer);
+          stage = "confirm";
+          btn.textContent = `Confirm pause ${minutes}m`;
+          return;
+        }
+        btn.textContent = `Pausing in ${Math.ceil(left / 1000)}s… (cancel)`;
+      };
+      tick();
+      countdownTimer = setInterval(tick, 250);
+    } else if (stage === "counting") {
+      reset();
+    } else if (stage === "confirm") {
+      stage = "done";
+      active = false;
+      observer.disconnect();
+      await onPause();
+      btn.textContent = "Paused ✓";
+      setTimeout(() => btn.remove(), 1200);
+    }
   });
 }
 
