@@ -22,7 +22,17 @@ const BUILD_HASH = "dev";
 // "reddit.com" alone also covers "www.reddit.com" — a separate entry for
 // it would just be a second rule racing the first to redirect the same
 // hostname (and having to be paused separately).
-const DEFAULT_RULES = [{ fromHost: "reddit.com", to: "https://app.mutasem.dev" }];
+const DEFAULT_RULES = [
+  { fromHost: "reddit.com", to: "https://app.mutasem.dev" },
+  { fromHost: "linkedin.com", to: "https://app.mutasem.dev" },
+];
+
+// Default rules can't be deleted from the panel (they can still be toggled
+// or paused). Matched by content rather than a stored flag so rules seeded
+// before this existed are covered too.
+function isDefaultRule(rule) {
+  return DEFAULT_RULES.some((d) => d.fromHost === rule.fromHost && d.to === rule.to);
+}
 
 function genId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -296,16 +306,18 @@ async function renderManagerPanel(storage) {
       controls.appendChild(pauseSelect);
     }
 
-    const deleteBtn = document.createElement("button");
-    deleteBtn.type = "button";
-    deleteBtn.textContent = "Delete";
-    deleteBtn.style.cssText = rmButtonStyle();
-    deleteBtn.addEventListener("click", async () => {
-      const current = await storage.getRules();
-      await storage.setRules(current.filter((x) => x.id !== rule.id));
-      renderManagerPanel(storage);
-    });
-    controls.appendChild(deleteBtn);
+    if (!isDefaultRule(rule)) {
+      const deleteBtn = document.createElement("button");
+      deleteBtn.type = "button";
+      deleteBtn.textContent = "Delete";
+      deleteBtn.style.cssText = rmButtonStyle();
+      deleteBtn.addEventListener("click", async () => {
+        const current = await storage.getRules();
+        await storage.setRules(current.filter((x) => x.id !== rule.id));
+        renderManagerPanel(storage);
+      });
+      controls.appendChild(deleteBtn);
+    }
 
     li.appendChild(controls);
     list.appendChild(li);
