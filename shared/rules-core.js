@@ -1,10 +1,6 @@
 "use strict";
 
 const STORAGE_KEY = "rules";
-const PAUSE_OPTIONS = [
-  { label: "5 min", minutes: 5 },
-  { label: "15 min", minutes: 15 },
-];
 const EXTEND_MINUTES = 15;
 const POST_REDIRECT_PAUSE_MINUTES = 5;
 const PAUSE_BUTTON_DELAY_MS = 15000;
@@ -26,13 +22,6 @@ const DEFAULT_RULES = [
   { fromHost: "reddit.com", to: "https://app.mutasem.dev" },
   { fromHost: "linkedin.com", to: "https://app.mutasem.dev" },
 ];
-
-// Default rules can't be deleted from the panel (they can still be toggled
-// or paused). Matched by content rather than a stored flag so rules seeded
-// before this existed are covered too.
-function isDefaultRule(rule) {
-  return DEFAULT_RULES.some((d) => d.fromHost === rule.fromHost && d.to === rule.to);
-}
 
 function genId() {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -109,7 +98,7 @@ function getButtonBar() {
 }
 
 // Applies a rule's pause directly to storage. Shared by the post-redirect
-// pause button and the manager panel's pause dropdown/extend button on both
+// pause button and the manager panel's extend button on both
 // platforms — neither a content script nor a userscript can call
 // browser.alarms itself, so on Firefox background.js reconciles the actual
 // alarm reactively from storage.onChanged instead of callers managing it.
@@ -249,24 +238,9 @@ async function renderManagerPanel(storage) {
       rmCountdownEls.set(rule.id, { el: countdown, disabledUntil: rule.disabledUntil });
     }
 
-    const controls = document.createElement("div");
-    controls.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;";
-
-    const toggle = document.createElement("input");
-    toggle.type = "checkbox";
-    toggle.checked = rule.enabled && !isPaused;
-    toggle.addEventListener("change", async () => {
-      const current = await storage.getRules();
-      const r = current.find((x) => x.id === rule.id);
-      if (!r) return;
-      r.enabled = toggle.checked;
-      r.disabledUntil = null;
-      await storage.setRules(current);
-      renderManagerPanel(storage);
-    });
-    controls.appendChild(toggle);
-
     if (isPaused) {
+      const controls = document.createElement("div");
+      controls.style.cssText = "display:flex;align-items:center;gap:8px;flex-wrap:wrap;";
       const extendBtn = document.createElement("button");
       extendBtn.type = "button";
       extendBtn.textContent = `+${EXTEND_MINUTES}m`;
@@ -280,46 +254,9 @@ async function renderManagerPanel(storage) {
         renderManagerPanel(storage);
       });
       controls.appendChild(extendBtn);
-    } else {
-      const pauseSelect = document.createElement("select");
-      pauseSelect.style.cssText = "font-size:12px;padding:2px;";
-      const def = document.createElement("option");
-      def.textContent = "Pause for…";
-      def.value = "";
-      pauseSelect.appendChild(def);
-      for (const opt of PAUSE_OPTIONS) {
-        const o = document.createElement("option");
-        o.value = String(opt.minutes);
-        o.textContent = opt.label;
-        pauseSelect.appendChild(o);
-      }
-      pauseSelect.addEventListener("change", async () => {
-        const minutes = Number(pauseSelect.value);
-        if (!minutes) return;
-        const current = await storage.getRules();
-        const r = current.find((x) => x.id === rule.id);
-        if (!r) return;
-        r.disabledUntil = Date.now() + minutes * 60000;
-        await storage.setRules(current);
-        renderManagerPanel(storage);
-      });
-      controls.appendChild(pauseSelect);
+      li.appendChild(controls);
     }
 
-    if (!isDefaultRule(rule)) {
-      const deleteBtn = document.createElement("button");
-      deleteBtn.type = "button";
-      deleteBtn.textContent = "Delete";
-      deleteBtn.style.cssText = rmButtonStyle();
-      deleteBtn.addEventListener("click", async () => {
-        const current = await storage.getRules();
-        await storage.setRules(current.filter((x) => x.id !== rule.id));
-        renderManagerPanel(storage);
-      });
-      controls.appendChild(deleteBtn);
-    }
-
-    li.appendChild(controls);
     list.appendChild(li);
   }
 }

@@ -59,10 +59,11 @@ Rules are stored under `storage.local["rules"]` as an array of:
   a URL at redirect time. Redirects always land on `to` as given (its own
   path, if any) — the original request's path/query/hash is dropped, not
   appended.
-- `enabled` — manual on/off toggle.
-- `disabledUntil` — epoch ms; set when a rule is paused via the manager
-  panel's dropdown, or via the post-redirect pause button — both just
-  write it straight into storage. A rule is active only if `enabled` is
+- `enabled` — always `true` for new rules; the panel has no toggle, so
+  rules can't be switched off by hand (explicit UX decision).
+- `disabledUntil` — epoch ms; set when a rule is paused via the
+  post-redirect pause button (the panel has no way to start a pause, only
+  to extend one already running) — it's written straight into storage. A rule is active only if `enabled` is
   true AND (`disabledUntil` is null or in the past).
 
 `DEFAULT_RULES` (in `shared/rules-core.js`) is seeded into storage exactly
